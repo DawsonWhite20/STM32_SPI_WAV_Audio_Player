@@ -23,6 +23,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include <stdio.h>
+#include <string.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,6 +58,8 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+
+void ListFiles(const char *path);
 
 /* USER CODE END PFP */
 
@@ -96,14 +101,27 @@ int main(void)
   MX_USART2_UART_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-  uint8_t tx = 0xA5, rx = 0;
-  HAL_StatusTypeDef status = HAL_SPI_TransmitReceive(&hspi1, &tx, &rx, 1, 100);
+
+  FRESULT fres;
+  FATFS fs;
+  char msg[64];
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	    fres = f_mount(&fs, "", 1);
+	    if (fres == FR_OK) {
+	        HAL_UART_Transmit(&huart2, (uint8_t *)"Mount OK\r\n", 10, 100);
+	        ListFiles("/");
+	        while (1) {} /* stop here once it works */
+	    } else {
+	        sprintf(msg, "Mount failed: %d\r\n", fres);
+	        HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), 100);
+	    }
+	    HAL_Delay(2000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -261,7 +279,34 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void ListFiles(const char *path)
+{
+    FRESULT res;
+    DIR dir;
+    FILINFO fno;
+    char msg[128];
 
+    res = f_opendir(&dir, path);
+    if (res != FR_OK) {
+        sprintf(msg, "opendir failed: %d\r\n", res);
+        HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), 100);
+        return;
+    }
+
+    for (;;) {
+        res = f_readdir(&dir, &fno);
+        if (res != FR_OK || fno.fname[0] == 0) break; /* error or end of dir */
+
+        if (fno.fattrib & AM_DIR) {
+            sprintf(msg, "[DIR]  %s\r\n", fno.fname);
+        } else {
+            sprintf(msg, "[FILE] %s  (%lu bytes)\r\n", fno.fname, (unsigned long)fno.fsize);
+        }
+        HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), 100);
+    }
+
+    f_closedir(&dir);
+}
 /* USER CODE END 4 */
 
 /**
